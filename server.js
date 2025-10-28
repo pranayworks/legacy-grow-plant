@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import bodyParser from 'body-parser';
 import XLSX from 'xlsx';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 
 dotenv.config();
 
@@ -103,6 +105,21 @@ function sendAsExcel(res, data, filename) {
   return res.send(buffer);
 }
 
+// Middleware
+const auth = (req, res, next) => {
+  const token = req.header('Authorization').replace('Bearer ', '');
+  if (!token) {
+    return res.status(401).json({ error: 'No token, authorization denied' });
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;
+    next();
+  } catch (err) {
+    res.status(401).json({ error: 'Token is not valid' });
+  }
+};
+
 // Routes - POST
 app.post('/contact', async (req, res) => {
   try {
@@ -132,20 +149,46 @@ app.post('/csr', async (req, res) => {
 });
 
 app.post('/login', async (req, res) => {
+  const { email, password } = req.body;
   try {
-    const doc = await Login.create(req.body);
-    res.status(201).json(doc);
+    const user = await Signup.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ error: 'Invalid credentials' });
+    }
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+    res.json({ token });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
 app.post('/signup', async (req, res) => {
+  const { name, email, password } = req.body;
   try {
-    const doc = await Signup.create(req.body);
-    res.status(201).json(doc);
+    let user = await Signup.findOne({ email });
+    if (user) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    user = new Signup({
+      name,
+      email,
+      password: hashedPassword,
+    });
+    await user.save();
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: '1h',
+    });
+    res.status(201).json({ token });
   } catch (err) {
-    res.status(400).json({ error: err.message });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -159,7 +202,7 @@ app.post('/donation', async (req, res) => {
 });
 
 // Routes - GET export
-app.get('/export-contacts', async (_req, res) => {
+app.get('/export-contacts', auth, async (_req, res) => {
   try {
     const rows = await Contact.find().lean();
     sendAsExcel(res, rows, 'contacts.xlsx');
@@ -168,7 +211,7 @@ app.get('/export-contacts', async (_req, res) => {
   }
 });
 
-app.get('/', async (_req, res) => {
+app.get('/', auth, async (_req, res) => {
   try {
     const rows = await Volunteer.find().lean();
     sendAsExcel(res, rows, 'volunteers.xlsx');
@@ -177,7 +220,7 @@ app.get('/', async (_req, res) => {
   }
 });
 
-app.get('/export-csrs', async (_req, res) => {
+app.get('/export-csrs', auth, async (_req, res) => {
   try {
     const rows = await CSR.find().lean();
     sendAsExcel(res, rows, 'csrs.xlsx');
@@ -186,7 +229,7 @@ app.get('/export-csrs', async (_req, res) => {
   }
 });
 
-app.get('/export-logins', async (_req, res) => {
+app.get('/export-logins', auth, async (_req, res) => {
   try {
     const rows = await Login.find().lean();
     sendAsExcel(res, rows, 'logins.xlsx');
@@ -195,7 +238,7 @@ app.get('/export-logins', async (_req, res) => {
   }
 });
 
-app.get('/export-signups', async (_req, res) => {
+app.get('/export-signups', auth, async (_req, res) => {
   try {
     const rows = await Signup.find().lean();
     sendAsExcel(res, rows, 'signups.xlsx');
@@ -204,7 +247,7 @@ app.get('/export-signups', async (_req, res) => {
   }
 });
 
-app.get('/export-donations', async (_req, res) => {
+app.get('/export-donations', auth, async (_req, res) => {
   try {
     const rows = await Donation.find().lean();
     sendAsExcel(res, rows, 'donations.xlsx');

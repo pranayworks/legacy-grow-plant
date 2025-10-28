@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Leaf, Droplet, Wind, Download, MapPin, LogOut, User as UserIcon } from "lucide-react";
 import { toast } from "sonner";
+import { fetchWithAuth } from "../lib/fetchWithAuth";
 
 interface TreeData {
   id: string;
@@ -98,6 +99,30 @@ export default function Dashboard() {
       navigate("/");
     } catch (error: any) {
       toast.error("Failed to logout");
+    }
+  };
+
+  const handleExport = async (dataType: string) => {
+    try {
+      const res = await fetchWithAuth(`http://localhost:5000/export-${dataType}`);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: 'Failed to export data' }));
+        throw new Error(err.error);
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${dataType}.xlsx`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+      toast.success(`${dataType.charAt(0).toUpperCase() + dataType.slice(1)} exported successfully!`);
+    } catch (error: any) {
+      toast.error("Export failed", {
+        description: error.message || "An unexpected error occurred."
+      });
     }
   };
 
@@ -201,6 +226,7 @@ export default function Dashboard() {
           <TabsTrigger value="trees">My Trees</TabsTrigger>
           <TabsTrigger value="certificates">Certificates</TabsTrigger>
           <TabsTrigger value="profile">Profile Settings</TabsTrigger>
+          <TabsTrigger value="admin">Admin</TabsTrigger>
         </TabsList>
 
         {/* Trees Tab */}
@@ -314,6 +340,40 @@ export default function Dashboard() {
                 <div className="mt-1 text-muted-foreground">
                   ₹{totalAmount}
                 </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Admin Tab */}
+        <TabsContent value="admin" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Admin Actions</CardTitle>
+              <CardDescription>Export data from the system.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <Button onClick={() => handleExport("contacts")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Contacts
+                </Button>
+                <Button onClick={() => handleExport("volunteers")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Volunteers
+                </Button>
+                <Button onClick={() => handleExport("csrs")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export CSRs
+                </Button>
+                <Button onClick={() => handleExport("signups")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Signups
+                </Button>
+                <Button onClick={() => handleExport("donations")}>
+                  <Download className="mr-2 h-4 w-4" />
+                  Export Donations
+                </Button>
               </div>
             </CardContent>
           </Card>

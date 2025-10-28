@@ -217,9 +217,10 @@ const Auth = () => {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Invalid credentials");
       }
-
+      const data = await res.json();
+      localStorage.setItem("token", data.token);
       toast.success("Successfully logged in!");
-      navigate("/"); // Redirect to the dashboard after login
+      navigate("/dashboard"); // Redirect to the dashboard after login
     } catch (error: any) {
       toast.error("Login failed", {
         description: error.message || "Invalid credentials"
@@ -258,7 +259,8 @@ const Auth = () => {
         const data = await res.json().catch(() => ({}));
         throw new Error(data?.error || "Could not create account");
       }
-
+      const data = await res.json();
+      localStorage.setItem("token", data.token);
       toast.success("Account created successfully!", {
         description: "You can now log in with your credentials"
       });
