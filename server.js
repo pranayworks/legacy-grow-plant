@@ -168,7 +168,7 @@ app.get('/export-contacts', async (_req, res) => {
   }
 });
 
-app.get('/export-volunteers', async (_req, res) => {
+app.get('/', async (_req, res) => {
   try {
     const rows = await Volunteer.find().lean();
     sendAsExcel(res, rows, 'volunteers.xlsx');

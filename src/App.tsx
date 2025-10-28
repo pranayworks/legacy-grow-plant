@@ -7,6 +7,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Layout } from "@/components/Layout";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { BrandOpening } from "@/components/BrandOpening";
+import ScrollToTop from "./ScrollToTop";
 import Index from "./pages/Index";
 import Donate from "./pages/Donate";
 import ChooseTree from "./pages/ChooseTree";
@@ -41,6 +42,7 @@ const App = () => {
         <Sonner />
         {showOpening && <BrandOpening onComplete={handleOpeningComplete} />}
         <BrowserRouter>
+          <ScrollToTop />
           <Routes>
             <Route path="/auth" element={<Auth />} />
             <Route path="/" element={<Layout />}>
