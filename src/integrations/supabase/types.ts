@@ -47,6 +47,13 @@ export type Database = {
             referencedRelation: "trees"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "certificates_tree_id_fkey"
+            columns: ["tree_id"]
+            isOneToOne: false
+            referencedRelation: "trees_public"
+            referencedColumns: ["id"]
+          },
         ]
       }
       contact_submissions: {
@@ -171,6 +178,7 @@ export type Database = {
           location: string | null
           longitude: number | null
           occasion: string
+          payment_id: string | null
           phone: string | null
           planted_date: string
           species_id: string | null
@@ -187,6 +195,7 @@ export type Database = {
           location?: string | null
           longitude?: number | null
           occasion: string
+          payment_id?: string | null
           phone?: string | null
           planted_date?: string
           species_id?: string | null
@@ -203,6 +212,7 @@ export type Database = {
           location?: string | null
           longitude?: number | null
           occasion?: string
+          payment_id?: string | null
           phone?: string | null
           planted_date?: string
           species_id?: string | null
@@ -269,7 +279,50 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      trees_public: {
+        Row: {
+          created_at: string | null
+          id: string | null
+          latitude: number | null
+          longitude: number | null
+          occasion: string | null
+          planted_date: string | null
+          region: string | null
+          species_id: string | null
+          tree_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          occasion?: string | null
+          planted_date?: string | null
+          region?: never
+          species_id?: string | null
+          tree_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          occasion?: string | null
+          planted_date?: string | null
+          region?: never
+          species_id?: string | null
+          tree_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trees_species_id_fkey"
+            columns: ["species_id"]
+            isOneToOne: false
+            referencedRelation: "tree_species"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Functions: {
       has_role: {

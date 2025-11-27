@@ -4,9 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { Copy, CheckCircle, QrCode, CreditCard } from "lucide-react";
+import { Copy, CheckCircle, QrCode } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 
 const Payment = () => {
@@ -14,10 +13,6 @@ const Payment = () => {
   const navigate = useNavigate();
   const [paymentId, setPaymentId] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [cardNumber, setCardNumber] = useState("");
-  const [cardExpiry, setCardExpiry] = useState("");
-  const [cardCVV, setCardCVV] = useState("");
-  const [cardName, setCardName] = useState("");
   const donationData = location.state?.donationData;
 
   const UPI_ID = "8074935169@ybl";
@@ -34,95 +29,92 @@ const Payment = () => {
     toast.success("UPI ID copied to clipboard");
   };
 
-  const handlePaymentConfirm = async (paymentType: 'upi' | 'card') => {
-    if (paymentType === 'upi' && !paymentId.trim()) {
+  const handlePaymentConfirm = async () => {
+    const trimmedPaymentId = paymentId.trim();
+    
+    // Validation: Check if payment ID is entered
+    if (!trimmedPaymentId) {
       toast.error("Please enter your payment transaction ID");
       return;
     }
 
-    if (paymentType === 'card') {
-      if (!cardNumber || !cardExpiry || !cardCVV || !cardName) {
-        toast.error("Please fill all card details");
-        return;
-      }
-      // Basic card validation
-      if (cardNumber.replace(/\s/g, '').length !== 16) {
-        toast.error("Invalid card number");
-        return;
-      }
+    // Validation: Check UPI transaction ID format (typically 12 digits)
+    if (!/^\d{12}$/.test(trimmedPaymentId)) {
+      toast.error("Invalid UPI transaction ID format. It should be 12 digits.");
+      return;
     }
 
     setProcessing(true);
 
     try {
+      // Check for duplicate transaction IDs
+      const { data: existingPayment, error: checkError } = await supabase
+        .from("trees")
+        .select("id")
+        .eq("payment_id", trimmedPaymentId)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error("Error checking duplicate payment:", checkError);
+        toast.error("Failed to verify payment. Please try again.");
+        setProcessing(false);
+        return;
+      }
+
+      if (existingPayment) {
+        toast.error("This transaction ID has already been used. Please use a unique transaction ID.");
+        setProcessing(false);
+        return;
+      }
+
       const { data: { session } } = await supabase.auth.getSession();
-      const finalPaymentId = paymentType === 'upi' ? paymentId : `CARD_${Date.now()}`;
 
-      // Record donation in backend
-      const res = await fetch('http://localhost:5000/donation', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: donationData.donor_name,
-          email: donationData.email,
-          amount: donationData.amount,
-          paymentId: finalPaymentId,
-        }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data?.error || 'Failed to record donation');
+      const treeData = {
+        tree_id: `TREE${Date.now()}`,
+        donor_name: donationData.name,
+        email: donationData.email,
+        phone: donationData.phone || "",
+        occasion: donationData.occasion,
+        amount: donationData.amount,
+        species_id: donationData.selectedTree?.id || null,
+        user_id: session?.user?.id || null,
+        payment_id: trimmedPaymentId,
+      };
+
+      console.log("Saving tree data:", treeData);
+
+      const { data, error } = await supabase
+        .from("trees")
+        .insert([treeData])
+        .select()
+        .single();
+
+      if (error) {
+        console.error("Error saving tree data:", error);
+        toast.error("Failed to process donation. Please try again.");
+        return;
       }
 
-      toast.success("Payment recorded successfully!", {
-        description: "You'll receive updates on your tree's growth!",
+      console.log("Tree data saved successfully:", data);
+
+      toast.success("🎉 Congratulations! We have received your payment successfully!", {
+        duration: 4000,
       });
 
-      // Continue flow
-      if (session?.user) {
-        navigate('/dashboard');
-      } else {
-        navigate('/choose-tree', { 
-          state: { 
-            donationData: {
-              ...donationData,
-              payment_id: finalPaymentId,
-              payment_status: 'pending_verification',
-              payment_method: paymentType,
-            },
-            paymentConfirmed: true 
-          } 
-        });
-      }
-    } catch (error: any) {
-      console.error('Error confirming payment:', error);
-      toast.error('Failed to record payment. Please contact support.');
+      // Delay navigation to allow user to see the success message
+      setTimeout(() => {
+        if (session?.user) {
+          navigate("/dashboard");
+        } else {
+          navigate("/");
+        }
+      }, 2000);
+    } catch (error) {
+      console.error("Error processing payment:", error);
+      toast.error("An unexpected error occurred. Please contact support.");
     } finally {
       setProcessing(false);
     }
-  };
-
-  const formatCardNumber = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    const matches = v.match(/\d{4,16}/g);
-    const match = (matches && matches[0]) || '';
-    const parts = [];
-    for (let i = 0, len = match.length; i < len; i += 4) {
-      parts.push(match.substring(i, i + 4));
-    }
-    if (parts.length) {
-      return parts.join(' ');
-    } else {
-      return value;
-    }
-  };
-
-  const formatExpiry = (value: string) => {
-    const v = value.replace(/\s+/g, '').replace(/[^0-9]/gi, '');
-    if (v.length >= 2) {
-      return v.slice(0, 2) + '/' + v.slice(2, 4);
-    }
-    return v;
   };
 
   if (!donationData) return null;
@@ -139,154 +131,83 @@ const Payment = () => {
           </div>
 
           <Card className="p-8">
-            <Tabs defaultValue="upi" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-6">
-                <TabsTrigger value="upi" className="font-heading">
-                  <QrCode className="h-4 w-4 mr-2" />
-                  UPI
-                </TabsTrigger>
-                <TabsTrigger value="card" className="font-heading">
-                  <CreditCard className="h-4 w-4 mr-2" />
-                  Card
-                </TabsTrigger>
-              </TabsList>
-
-              <TabsContent value="upi" className="space-y-6">
-                <div className="space-y-4">
-                  <h2 className="font-heading font-semibold text-2xl">Pay via UPI</h2>
-                  
-                  <div className="bg-primary/5 p-6 rounded-lg space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm text-muted-foreground mb-1">UPI ID</p>
-                        <p className="font-mono text-lg font-semibold">{UPI_ID}</p>
-                      </div>
-                      <Button variant="outline" size="sm" onClick={copyUPI}>
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy
-                      </Button>
+            <div className="space-y-6">
+              <div className="space-y-4">
+                <h2 className="font-heading font-semibold text-2xl flex items-center gap-2">
+                  <QrCode className="h-6 w-6 text-primary" />
+                  Pay via UPI
+                </h2>
+                
+                <div className="bg-primary/5 p-6 rounded-lg space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-1">UPI ID</p>
+                      <p className="font-mono text-lg font-semibold">{UPI_ID}</p>
                     </div>
-
-                    <div className="border-t pt-4">
-                      <p className="text-sm text-muted-foreground mb-2">Scan QR Code</p>
-                      <div className="bg-white p-4 rounded-lg inline-block">
-                        <img 
-                          src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=8074935169@ybl%26pn=GREEN%20LEGACY%26am=" 
-                          alt="UPI QR Code"
-                          className="w-48 h-48"
-                        />
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-2">
-                        Use any UPI app (Google Pay, PhonePe, Paytm) to scan and pay ₹{donationData.amount}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  <h3 className="font-heading font-semibold text-lg">After Payment</h3>
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentId">Enter Transaction/UPI Reference ID *</Label>
-                    <Input
-                      id="paymentId"
-                      placeholder="e.g., 432156789012"
-                      value={paymentId}
-                      onChange={(e) => setPaymentId(e.target.value)}
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      You'll find this in your payment app after successful payment
-                    </p>
-                  </div>
-
-                  <Button 
-                    onClick={() => handlePaymentConfirm('upi')} 
-                    className="w-full font-heading font-semibold text-lg"
-                    disabled={processing || !paymentId.trim()}
-                  >
-                    {processing ? (
-                      "Processing..."
-                    ) : (
-                      <>
-                        <CheckCircle className="h-5 w-5 mr-2" />
-                        Confirm Payment
-                      </>
-                    )}
-                  </Button>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="card" className="space-y-6">
-                <div className="space-y-4">
-                  <h2 className="font-heading font-semibold text-2xl">Pay with Card</h2>
-                  
-                  <div className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="cardName">Cardholder Name *</Label>
-                      <Input
-                        id="cardName"
-                        placeholder="John Doe"
-                        value={cardName}
-                        onChange={(e) => setCardName(e.target.value)}
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="cardNumber">Card Number *</Label>
-                      <Input
-                        id="cardNumber"
-                        placeholder="1234 5678 9012 3456"
-                        value={cardNumber}
-                        onChange={(e) => setCardNumber(formatCardNumber(e.target.value))}
-                        maxLength={19}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label htmlFor="cardExpiry">Expiry Date *</Label>
-                        <Input
-                          id="cardExpiry"
-                          placeholder="MM/YY"
-                          value={cardExpiry}
-                          onChange={(e) => setCardExpiry(formatExpiry(e.target.value))}
-                          maxLength={5}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label htmlFor="cardCVV">CVV *</Label>
-                        <Input
-                          id="cardCVV"
-                          type="password"
-                          placeholder="123"
-                          value={cardCVV}
-                          onChange={(e) => setCardCVV(e.target.value.replace(/\D/g, '').slice(0, 3))}
-                          maxLength={3}
-                        />
-                      </div>
-                    </div>
-
-                    <Button 
-                      onClick={() => handlePaymentConfirm('card')} 
-                      className="w-full font-heading font-semibold text-lg"
-                      disabled={processing || !cardNumber || !cardExpiry || !cardCVV || !cardName}
-                    >
-                      {processing ? (
-                        "Processing..."
-                      ) : (
-                        <>
-                          <CreditCard className="h-5 w-5 mr-2" />
-                          Pay ₹{donationData.amount}
-                        </>
-                      )}
+                    <Button variant="outline" size="sm" onClick={copyUPI}>
+                      <Copy className="h-4 w-4 mr-2" />
+                      Copy
                     </Button>
                   </div>
+
+                  <div className="border-t pt-4">
+                    <p className="text-sm text-muted-foreground mb-2">Scan QR Code</p>
+                    <div className="bg-white p-4 rounded-lg inline-block">
+                      <img 
+                        src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=upi://pay?pa=8074935169@ybl%26pn=GREEN%20LEGACY%26am=" 
+                        alt="UPI QR Code"
+                        className="w-48 h-48"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Use any UPI app (Google Pay, PhonePe, Paytm) to scan and pay ₹{donationData.amount}
+                    </p>
+                  </div>
                 </div>
-              </TabsContent>
-            </Tabs>
+              </div>
+
+              <div className="space-y-4">
+                <h3 className="font-heading font-semibold text-lg">After Payment</h3>
+                <div className="space-y-2">
+                  <Label htmlFor="paymentId">
+                    Enter Transaction/UPI Reference ID <span className="text-red-500">*</span>
+                  </Label>
+                  <Input
+                    id="paymentId"
+                    placeholder="Enter 12-digit transaction ID (e.g., 432156789012)"
+                    value={paymentId}
+                    onChange={(e) => setPaymentId(e.target.value)}
+                    maxLength={12}
+                    className="font-mono"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    You'll find this 12-digit ID in your UPI payment app after successful payment
+                  </p>
+                </div>
+
+                <Button 
+                  onClick={handlePaymentConfirm} 
+                  className="w-full font-heading font-semibold text-lg"
+                  disabled={processing || !paymentId.trim()}
+                >
+                  {processing ? (
+                    "Processing..."
+                  ) : (
+                    <>
+                      <CheckCircle className="h-5 w-5 mr-2" />
+                      Confirm Payment
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
 
             <div className="bg-muted/50 p-4 rounded-lg mt-6">
               <p className="text-sm text-muted-foreground">
-                🔒 Your payment information is secure. All transactions are encrypted.
+                🔒 Your payment information is secure. All transactions are verified before processing.
+              </p>
+              <p className="text-xs text-muted-foreground mt-2">
+                💳 Card payments coming soon with secure payment gateway integration
               </p>
             </div>
           </Card>
